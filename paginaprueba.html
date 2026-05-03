@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Categorias</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    height: 100vh;
+    background: #f4f6f9;
+    transition: 0.3s;
+}
+
+/* DARK MODE */
+body.dark {
+    background: #1e1e1e;
+    color: white;
+}
+
+/* SIDEBAR */
+.sidebar {
+    width: 220px;
+    background: #1f3c88;
+    color: white;
+    padding: 20px;
+}
+
+.sidebar div {
+    margin: 10px 0;
+    cursor: pointer;
+}
+
+/* MAIN */
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* TOPBAR */
+.topbar {
+    background: white;
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+body.dark .topbar {
+    background: #2c2c2c;
+}
+
+input {
+    padding: 8px;
+    margin: 5px;
+}
+
+/* CATEGORY */
+.category {
+    margin: 20px;
+}
+
+.category-header {
+    cursor: pointer;
+    padding: 10px;
+    border-radius: 6px;
+    color: white;
+}
+
+/* 🔥 CAMBIO IMPORTANTE: HORIZONTAL */
+.cards {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+/* CARD */
+.card {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    width: 220px;
+    min-width: 220px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+body.dark .card {
+    background: #2c2c2c;
+}
+
+.card a {
+    display: inline-block;
+    margin-top: 10px;
+    background: #1f3c88;
+    color: white;
+    padding: 5px 10px;
+    text-decoration: none;
+}
+
+/* DELETE */
+.delete {
+    float: right;
+    cursor: pointer;
+    color: red;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+    <h2>Categorias</h2>
+    <div id="menu"></div>
+</div>
+
+<div class="main">
+
+<div class="topbar">
+    <div>
+        <input id="titulo" placeholder="Nombre">
+        <input id="url" placeholder="URL">
+        <input id="categoria" placeholder="Categoría">
+        <button onclick="agregar()">➕</button>
+    </div>
+    <div>
+        <input id="search" placeholder="Buscar...">
+        <button onclick="toggleDark()">🌙</button>
+    </div>
+</div>
+
+<div id="cards"></div>
+
+</div>
+
+<script>
+
+let datosGlobal = [];
+let categoriaActual = "todos";
+
+// NORMALIZAR
+function normalizar(texto) {
+    return (texto || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+// COLOR
+function colorCategoria(cat) {
+    let colores = ["#1f3c88","#2a9d8f","#e76f51","#6a4c93","#f4a261"];
+    let index = Math.abs(cat.split("").reduce((a,b)=>a+b.charCodeAt(0),0)) % colores.length;
+    return colores[index];
+}
+
+// MENU
+function construirMenu(data) {
+    let categorias = new Set();
+
+    for (let i = 1; i < data.length; i++) {
+        categorias.add(normalizar(data[i][2] || "sin categoria"));
+    }
+
+    let html = `<div onclick="filtrar('todos')">Todos</div>`;
+
+    categorias.forEach(cat => {
+        html += `<div onclick="filtrar('${cat}')">${cat.toUpperCase()}</div>`;
+    });
+
+    document.getElementById("menu").innerHTML = html;
+}
+
+// CARGAR
+function cargar() {
+    google.script.run.withSuccessHandler(data => {
+        datosGlobal = data;
+        construirMenu(data);
+        render(data);
+    }).obtenerLinks();
+}
+
+// RENDER
+function render(data) {
+
+    let grupos = {};
+
+    for (let i = 1; i < data.length; i++) {
+
+        let d = data[i];
+        let cat = normalizar(d[2] || "sin categoria");
+
+        if (categoriaActual !== "todos" && cat !== normalizar(categoriaActual)) continue;
+
+        if (!grupos[cat]) grupos[cat] = [];
+
+        grupos[cat].push({
+            titulo: d[0],
+            url: d[1],
+            fila: i + 1
+        });
+    }
+
+    let html = "";
+
+    for (let cat in grupos) {
+
+        let color = colorCategoria(cat);
+
+        html += `
+        <div class="category">
+            <div class="category-header" style="background:${color}" onclick="toggleCategoria('${cat}')">
+                📂 ${cat.toUpperCase()} (${grupos[cat].length})
+            </div>
+
+            <div class="cards" id="grupo-${cat}">
+        `;
+
+        grupos[cat].forEach(item => {
+            html += `
+            <div class="card">
+                <span class="delete" onclick="eliminar(${item.fila})">❌</span>
+                <h3>${item.titulo}</h3>
+                <a href="${item.url}" target="_blank">Abrir</a>
+            </div>`;
+        });
+
+        html += `</div></div>`;
+    }
+
+    document.getElementById("cards").innerHTML = html;
+}
+
+// COLAPSAR
+function toggleCategoria(cat) {
+    let el = document.getElementById("grupo-" + cat);
+    el.style.display = (el.style.display === "none") ? "flex" : "none";
+}
+
+// AGREGAR
+function agregar() {
+
+    let t = document.getElementById("titulo").value;
+    let u = document.getElementById("url").value;
+    let c = document.getElementById("categoria").value;
+
+    if (!t || !u) return alert("Completa datos");
+
+    google.script.run.withSuccessHandler(() => {
+        document.getElementById("titulo").value = "";
+        document.getElementById("url").value = "";
+        document.getElementById("categoria").value = "";
+        cargar();
+    }).guardarLink(t, u, c);
+}
+
+// ELIMINAR
+function eliminar(fila) {
+    if (!confirm("¿Eliminar?")) return;
+    google.script.run.withSuccessHandler(cargar).eliminarLink(fila);
+}
+
+// BUSCAR
+document.getElementById("search").addEventListener("keyup", function () {
+    let val = this.value.toLowerCase();
+
+    let filtrado = datosGlobal.filter((f, i) => {
+        if (i === 0) return false;
+        return (f[0] + f[1] + f[2]).toLowerCase().includes(val);
+    });
+
+    render([["", "", ""], ...filtrado]);
+});
+
+// FILTRAR
+function filtrar(cat) {
+    categoriaActual = cat;
+    render(datosGlobal);
+}
+
+// DARK MODE
+function toggleDark() {
+    document.body.classList.toggle("dark");
+}
+
+// INIT
+document.addEventListener("DOMContentLoaded", cargar);
+
+</script>
+
+</body>
+</html>
